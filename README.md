@@ -42,15 +42,22 @@ Prebuilt binary, no runtime needed.
 curl -fsSL https://raw.githubusercontent.com/notshekhar/squirm/main/install.sh | bash
 ```
 
-**Windows** (PowerShell, x64):
+**Windows** (x64) — PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/notshekhar/squirm/main/install.ps1 | iex
 ```
 
+…or Command Prompt (`cmd.exe`):
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/notshekhar/squirm/main/install.ps1 | iex"
+```
+
 Then `squirm` (worm) or `squirm rabbit`. Uninstall with
-`SQUIRM_UNINSTALL=1 curl -fsSL .../install.sh | bash` (macOS/Linux) or
-`$env:SQUIRM_UNINSTALL=1; irm .../install.ps1 | iex` (Windows).
+`SQUIRM_UNINSTALL=1 curl -fsSL .../install.sh | bash` (macOS/Linux), or on
+Windows `$env:SQUIRM_UNINSTALL=1; irm .../install.ps1 | iex` (PowerShell) /
+`set SQUIRM_UNINSTALL=1&& powershell -NoProfile -ExecutionPolicy Bypass -Command "irm .../install.ps1 | iex"` (cmd).
 
 ## Run from source
 

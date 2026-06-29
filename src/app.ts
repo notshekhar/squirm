@@ -24,10 +24,10 @@ const FOOD_LIFE = 1; // food intensity at drop; decays each tick
 const FOOD_DECAY = 0.9994; // slow fade so a patch survives a long trek across a wide world
 const EAT_RATE = 0.018; // depletion per tick while sitting on the patch
 const HISTORY = 240;
-// A wild carrot wanders in roughly every 2 minutes (randomized 90–150s) so the
+// A wild carrot wanders in roughly every minute (randomized 50–70s) so the
 // rabbit keeps foraging on its own, with no key pressed.
-const CARROT_MIN_MS = 90_000;
-const CARROT_MAX_MS = 150_000;
+const CARROT_MIN_MS = 50_000;
+const CARROT_MAX_MS = 70_000;
 
 const mdTheme: MarkdownTheme = {
     heading: chalk.bold.greenBright,
@@ -101,7 +101,7 @@ export class SquirmApp implements Component {
         this.tui.requestRender(true);
     }
 
-    /** Pick the moment the next wild carrot drops in — ~2 min out, randomized. */
+    /** Pick the moment the next wild carrot drops in — ~1 min out, randomized. */
     private scheduleCarrot(): void {
         this.nextCarrotAt = Date.now() + CARROT_MIN_MS + Math.random() * (CARROT_MAX_MS - CARROT_MIN_MS);
     }
@@ -128,7 +128,7 @@ export class SquirmApp implements Component {
 
     private tick(): void {
         if (this.paused || this.quitting) return;
-        // The rabbit forages on its own: a wild carrot drops in every ~2 min,
+        // The rabbit forages on its own: a wild carrot drops in every ~1 min,
         // but only while none is already on the ground.
         if (!this.food && Date.now() >= this.nextCarrotAt) {
             this.dropFood("a wild carrot appears → hop to it");
