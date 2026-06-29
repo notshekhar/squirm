@@ -1,9 +1,9 @@
 {
-  "lockfileVersion": 2,
+  "lockfileVersion": 1,
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "warm",
+      "name": "squirm",
       "dependencies": {
         "@earendil-works/pi-tui": "^0.79.4",
         "chalk": "^5.5.0",
