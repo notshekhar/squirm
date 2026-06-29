@@ -24,6 +24,10 @@ const FOOD_LIFE = 1; // food intensity at drop; decays each tick
 const FOOD_DECAY = 0.9994; // slow fade so a patch survives a long trek across a wide world
 const EAT_RATE = 0.018; // depletion per tick while sitting on the patch
 const HISTORY = 240;
+// A wild carrot wanders in roughly every 2 minutes (randomized 90–150s) so the
+// rabbit keeps foraging on its own, with no key pressed.
+const CARROT_MIN_MS = 90_000;
+const CARROT_MAX_MS = 150_000;
 
 const mdTheme: MarkdownTheme = {
     heading: chalk.bold.greenBright,
@@ -67,6 +71,7 @@ export class SquirmApp implements Component {
     private paused = false;
     private quitting = false;
     private timer?: ReturnType<typeof setInterval>;
+    private nextCarrotAt = Infinity; // when the next wild carrot appears (rabbit only)
 
     constructor(kind: CreatureKind = "worm") {
         this.creature = kind === "rabbit" ? new Rabbit(this.engine) : new Worm(this.engine);
@@ -91,8 +96,24 @@ export class SquirmApp implements Component {
         // Without this, keypresses echo to the terminal and shift every frame.
         this.tui.start();
 
+        if (this.creature.kind === "rabbit") this.scheduleCarrot();
         this.timer = setInterval(() => this.tick(), FRAME_MS);
         this.tui.requestRender(true);
+    }
+
+    /** Pick the moment the next wild carrot drops in — ~2 min out, randomized. */
+    private scheduleCarrot(): void {
+        this.nextCarrotAt = Date.now() + CARROT_MIN_MS + Math.random() * (CARROT_MAX_MS - CARROT_MIN_MS);
+    }
+
+    /** Drop a food patch where the creature wants it (rabbit: a carrot on the ground). */
+    private dropFood(announce: string): void {
+        const { w, h } = this.habitatDims();
+        const spot = this.creature.suggestFood(w, h);
+        this.food = new FoodField(spot.x, spot.y, spot.sigma, FOOD_LIFE);
+        this.prevC = this.food.concentration(this.creature.x, this.creature.y);
+        this.stimulus = announce;
+        if (this.creature.kind === "rabbit") this.scheduleCarrot();
     }
 
     /** Inner habitat area (inside the box border), in grid cells. */
@@ -107,6 +128,11 @@ export class SquirmApp implements Component {
 
     private tick(): void {
         if (this.paused || this.quitting) return;
+        // The rabbit forages on its own: a wild carrot drops in every ~2 min,
+        // but only while none is already on the ground.
+        if (!this.food && Date.now() >= this.nextCarrotAt) {
+            this.dropFood("a wild carrot appears → hop to it");
+        }
         this.engine.step();
         this.sense();
         const { w, h } = this.habitatDims();
@@ -173,16 +199,11 @@ export class SquirmApp implements Component {
             return;
         }
         switch (data) {
-            case "f": {
+            case "f":
                 // drop a food patch wherever this habitat wants it (worm: anywhere
                 // in the dish; rabbit: a carrot on the ground).
-                const { w, h } = this.habitatDims();
-                const spot = this.creature.suggestFood(w, h);
-                this.food = new FoodField(spot.x, spot.y, spot.sigma, FOOD_LIFE);
-                this.prevC = this.food.concentration(this.creature.x, this.creature.y);
-                this.stimulus = this.creature.kind === "rabbit" ? "carrot dropped → hop to it" : "food dropped → chemotaxis";
+                this.dropFood(this.creature.kind === "rabbit" ? "carrot dropped → hop to it" : "food dropped → chemotaxis");
                 break;
-            }
             case "t":
                 this.engine.inject(sensory.nose, STIM_AMOUNT);
                 this.creature.perceive?.("touch_front");
@@ -219,6 +240,7 @@ export class SquirmApp implements Component {
                 this.food = null;
                 this.prevC = 0;
                 this.stimulus = "(reset)";
+                if (this.creature.kind === "rabbit") this.scheduleCarrot();
                 break;
         }
         this.tui.requestRender();

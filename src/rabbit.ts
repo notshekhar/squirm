@@ -51,6 +51,12 @@ const E_REST = 0.006;
 const E_EAT = 0.025;
 const E_TIRED = 0.12;
 const HUNGER_RISE = 0.0009;
+// Foraging gates: a fed rabbit ignores food, and it can only notice a carrot
+// within smell range — a radius that grows as it gets hungrier (a starving
+// rabbit noses harder) and shrinks as the carrot fades.
+const HUNGER_SEEK = 0.45; // below this the rabbit is content and won't chase food
+const SMELL_BASE = 20; // cells it can smell a fresh carrot from when just peckish
+const SMELL_HUNGER_GAIN = 28; // extra reach at full hunger
 
 // Warm rabbit palette.
 const FUR = chalk.rgb(214, 168, 122);
@@ -573,7 +579,7 @@ export class Rabbit implements Creature {
             this.behavior = "eat";
             return;
         }
-        if (food) {
+        if (food && this.perceivesFood(food)) {
             this.forage(food);
             return;
         }
@@ -593,6 +599,15 @@ export class Rabbit implements Creature {
             return;
         }
         this.ambient(arousal);
+    }
+
+    /** Does the rabbit actually notice this carrot? It must be hungry enough to
+     *  care, and the carrot must be within smell range — a radius that grows with
+     *  hunger and shrinks as the carrot fades. A full rabbit walks right past it. */
+    private perceivesFood(food: FoodField): boolean {
+        if (this.hunger < HUNGER_SEEK) return false;
+        const range = (SMELL_BASE + SMELL_HUNGER_GAIN * this.hunger) * (0.4 + 0.6 * food.intensity);
+        return Math.abs(food.x - this.x) <= range;
     }
 
     /** Go to the carrot. Travel toward its column by hops; when it sits up on a
@@ -1021,7 +1036,7 @@ export class Rabbit implements Creature {
         let seeing: string;
         if (this.perceptTimer > 0) seeing = this.perceptText;
         else if (this.threat > 0.4) seeing = chalk.redBright("‼ predator!");
-        else if (food) {
+        else if (food && this.perceivesFood(food)) {
             const dx = food.x - this.x;
             const up = this.y - food.y;
             const dir = up > 2 ? " (up)" : up < -2 ? " (below)" : "";

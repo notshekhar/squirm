@@ -34,14 +34,23 @@ this is the worm's brain in a rabbit suit, and that's the joke.)
 
 ## Install
 
-Prebuilt binary:
+Prebuilt binary, no runtime needed.
+
+**macOS & Linux** (x64 / arm64):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/notshekhar/squirm/main/install.sh | bash
 ```
 
+**Windows** (PowerShell, x64):
+
+```powershell
+irm https://raw.githubusercontent.com/notshekhar/squirm/main/install.ps1 | iex
+```
+
 Then `squirm` (worm) or `squirm rabbit`. Uninstall with
-`SQUIRM_UNINSTALL=1 curl -fsSL .../install.sh | bash`.
+`SQUIRM_UNINSTALL=1 curl -fsSL .../install.sh | bash` (macOS/Linux) or
+`$env:SQUIRM_UNINSTALL=1; irm .../install.ps1 | iex` (Windows).
 
 ## Run from source
 
