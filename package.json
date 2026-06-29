@@ -1,0 +1,24 @@
+{
+    "name": "squirm",
+    "version": "0.1.0",
+    "description": "squirm — a virtual C. elegans living in your terminal, driven by its real connectome.",
+    "type": "module",
+    "license": "MIT",
+    "bin": {
+        "squirm": "./src/cli.ts"
+    },
+    "files": [
+        "src"
+    ],
+    "scripts": {
+        "start": "bun ./src/cli.ts",
+        "build": "bun build-bin.ts"
+    },
+    "dependencies": {
+        "@earendil-works/pi-tui": "^0.79.4",
+        "chalk": "^5.5.0"
+    },
+    "devDependencies": {
+        "@types/bun": "latest"
+    }
+}
