@@ -2,6 +2,7 @@
 import { connectome } from "./connectome.ts";
 import type { CreatureKind } from "./creature.ts";
 import { run } from "./app.ts";
+import { runUpdate } from "./update.ts";
 
 declare const __SQUIRM_VERSION__: string;
 const VERSION = typeof __SQUIRM_VERSION__ === "string" ? __SQUIRM_VERSION__ : "0.1.0";
@@ -17,6 +18,7 @@ Usage:
   squirm rabbit        Launch the rabbit (meadow, real jump physics)
   squirm worm          Launch the worm explicitly
   squirm info          Print connectome stats and exit
+  squirm update        Update to the latest release (alias: upgrade)
   squirm version       Print the version
   squirm help          Show this help
 
@@ -41,7 +43,7 @@ function info(): void {
     );
 }
 
-function main(): void {
+async function main(): Promise<void> {
     const args = process.argv.slice(2);
     if (args.some((a) => ["-h", "--help", "help"].includes(a))) {
         process.stdout.write(`${HELP}\n`);
@@ -49,6 +51,10 @@ function main(): void {
     }
     if (args.some((a) => ["-v", "--version", "version"].includes(a))) {
         process.stdout.write(`${VERSION}\n`);
+        return;
+    }
+    if (args.some((a) => ["update", "upgrade"].includes(a))) {
+        await runUpdate(VERSION, { force: args.includes("--force") || args.includes("-f") });
         return;
     }
     if (args.includes("info")) {
@@ -61,4 +67,7 @@ function main(): void {
     run(kind);
 }
 
-main();
+main().catch((err) => {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+});

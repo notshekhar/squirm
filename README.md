@@ -54,8 +54,9 @@ irm https://raw.githubusercontent.com/notshekhar/squirm/main/install.ps1 | iex
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/notshekhar/squirm/main/install.ps1 | iex"
 ```
 
-Then `squirm` (worm) or `squirm rabbit`. Uninstall with
-`SQUIRM_UNINSTALL=1 curl -fsSL .../install.sh | bash` (macOS/Linux), or on
+Then `squirm` (worm) or `squirm rabbit`. Update in place any time with
+`squirm update` (it re-runs the right installer for your platform). Uninstall
+with `SQUIRM_UNINSTALL=1 curl -fsSL .../install.sh | bash` (macOS/Linux), or on
 Windows `$env:SQUIRM_UNINSTALL=1; irm .../install.ps1 | iex` (PowerShell) /
 `set SQUIRM_UNINSTALL=1&& powershell -NoProfile -ExecutionPolicy Bypass -Command "irm .../install.ps1 | iex"` (cmd).
 
