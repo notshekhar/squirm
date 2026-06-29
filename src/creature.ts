@@ -83,4 +83,8 @@ export interface Creature {
     senses?(food: FoodField | null): Senses;
     /** Stimulus key hints for the on-screen legend. */
     stimulusKeys?(): StimulusKey[];
+    /** A display name for the title bar (e.g. the rabbit's name), or null. */
+    nickname?(): string | null;
+    /** Pre-styled HUD lines summarising the creature's life so far. */
+    lifeStats?(): string[];
 }

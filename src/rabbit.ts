@@ -55,8 +55,33 @@ const HUNGER_RISE = 0.0009;
 // within smell range — a radius that grows as it gets hungrier (a starving
 // rabbit noses harder) and shrinks as the carrot fades.
 const HUNGER_SEEK = 0.45; // below this the rabbit is content and won't chase food
-const SMELL_BASE = 20; // cells it can smell a fresh carrot from when just peckish
-const SMELL_HUNGER_GAIN = 28; // extra reach at full hunger
+const SMELL_BASE = 46; // cells it can smell a fresh carrot from when just peckish
+const SMELL_HUNGER_GAIN = 34; // extra reach at full hunger (covers the whole view)
+
+// Day/night: one full dawn→day→dusk→night cycle, in ticks (~3 min at ~16 tps).
+const DAY_TICKS = 3000;
+
+// A butterfly drifts in on calm, sunny stretches for the rabbit to chase — it
+// flutters away whenever the rabbit gets close, so it's never actually caught
+// (that's the joke). Lifetime (while present) and gap (while absent), in ticks.
+const FLY_LIFE_MIN = 380;
+const FLY_LIFE_MAX = 900;
+const FLY_GAP_MIN = 500;
+const FLY_GAP_MAX = 1500;
+
+// The burrow: when something scares it, the rabbit bolts down the hole and hides
+// for this many ticks, popping back out once the coast feels clear.
+const HIDE_MIN = 36;
+const HIDE_MAX = 70;
+
+// Every rabbit gets a name (shown in the title bar). Reshuffled on reset.
+const BUNNY_NAMES = [
+    "Clover", "Pippin", "Hazel", "Thumper", "Mochi", "Biscuit", "Acorn",
+    "Maple", "Nibbles", "Fern", "Cinnamon", "Dandelion", "Waffles",
+    "Juniper", "Bluebell", "Pebble", "Marigold", "Sorrel",
+];
+
+const pickName = () => BUNNY_NAMES[(Math.random() * BUNNY_NAMES.length) | 0];
 
 // Warm rabbit palette.
 const FUR = chalk.rgb(214, 168, 122);
@@ -134,6 +159,26 @@ export class Rabbit implements Creature {
     private hopsLeft = 0; // remaining lollops in the current walk burst
     private pauseTimer = 0; // stand-and-look pause between walk bursts
 
+    // a butterfly to chase (play); null when none is about
+    private butterfly: { x: number; y: number; vx: number; vy: number } | null = null;
+    private flyTtl = 0; // ticks the current butterfly stays before fluttering off
+    private flyGap = FLY_GAP_MIN; // ticks until another may appear
+
+    // the burrow + hiding
+    private burrowX = 0; // world column of the burrow mouth
+    private underground = false; // hidden down the hole (not drawn, frozen)
+    private hideTimer = 0; // ticks left before it dares pop back out
+    private toBurrow = false; // currently bolting for the burrow (vs open ground)
+
+    // identity + a little life story
+    private name = pickName();
+    private carrots = 0; // carrots eaten
+    private binkies = 0; // joyful binkies
+    private hops = 0; // hops/leaps travelled
+    private wasEating = false; // edge-detect carrot finished → carrots++
+    private happyStreak = 0; // consecutive content/safe ticks
+    private bestStreak = 0; // longest such streak so far
+
     constructor(private engine: Engine) {}
 
     reset(): void {
@@ -167,6 +212,20 @@ export class Rabbit implements Creature {
         this.forageStuck = 0;
         this.hopsLeft = 0;
         this.pauseTimer = 0;
+        this.butterfly = null;
+        this.flyTtl = 0;
+        this.flyGap = FLY_GAP_MIN;
+        this.underground = false;
+        this.hideTimer = 0;
+        this.toBurrow = false;
+        // a reset is a brand-new rabbit: new name, fresh life story
+        this.name = pickName();
+        this.carrots = 0;
+        this.binkies = 0;
+        this.hops = 0;
+        this.wasEating = false;
+        this.happyStreak = 0;
+        this.bestStreak = 0;
     }
 
     /** Travel by hopping. A small launch in the heading direction; chains into a
@@ -181,6 +240,7 @@ export class Rabbit implements Creature {
         this.bounding = label;
         this.behavior = label;
         this.energy = Math.max(0, this.energy - ecost);
+        this.hops++;
     }
 
     place(viewW: number, h: number): void {
@@ -268,6 +328,8 @@ export class Rabbit implements Creature {
         }
 
         this.spawnX = this.clearColumn(w, 0.5);
+        // the burrow sits off to one side on clear ground, away from the spawn
+        this.burrowX = this.clearColumn(w, 0.78);
 
         // reachable-hop graph: edge i→j if j is within HREACH horizontally and at
         // most VSTEP above i (dropping down is always allowed). Used to navigate.
@@ -380,6 +442,7 @@ export class Rabbit implements Creature {
         this.behavior = behavior;
         this.bounding = null; // a real (climbing/reaction) leap, not a travel gait
         this.energy = Math.max(0, this.energy - (behavior === "leap" ? E_LEAP : E_HOP));
+        this.hops++;
     }
 
     // ── stimuli ──────────────────────────────────────────────────────────────
@@ -433,6 +496,15 @@ export class Rabbit implements Creature {
         if (!this.placed) this.place(viewW, h);
         this.viewW = viewW;
         this.floor = h - 1;
+        const clock = this.engine.ticks;
+
+        // hidden down the burrow: frozen, just waiting for the scare to pass
+        if (this.underground) {
+            this.updateHidden(viewW);
+            return;
+        }
+        // a butterfly drifts about regardless of what the rabbit is doing
+        this.updateButterfly(clock);
 
         const m = this.readMotor();
         const reverse = this.engine.pool(command.backward) + 0.4 * m.backward;
@@ -470,6 +542,16 @@ export class Rabbit implements Creature {
         // between bounds, flicking the bar 0↔full. Easing gives a steady value
         // that ramps up/down and cleanly separates amble < bound < flee.
         this.speed += (this.locomotorTarget() - this.speed) * 0.12;
+
+        // ── life story ───────────────────────────────────────────────────────
+        // a carrot is "eaten" the moment it vanishes after we'd been nibbling it
+        if (this.wasEating && !food) this.carrots++;
+        this.wasEating = !!food && dwell > 0.55;
+        // a content, unthreatened rabbit racks up a joy streak
+        if (this.threat < 0.2 && this.comfort > 0.5) {
+            this.happyStreak++;
+            if (this.happyStreak > this.bestStreak) this.bestStreak = this.happyStreak;
+        } else this.happyStreak = 0;
     }
 
     // Representative ground speed per gait, in 0..0.5 so the panel's ×2 bar
@@ -485,6 +567,8 @@ export class Rabbit implements Creature {
                 return 0.46;
             case "run":
                 return 0.42;
+            case "chase":
+                return 0.4;
             case "binky":
                 return 0.34;
             case "hop":
@@ -547,21 +631,38 @@ export class Rabbit implements Creature {
             this.freezeTimer--;
             this.vx = 0;
             this.behavior = "freeze";
+            // hand off to the flee block, which decides burrow vs. open ground
             if (this.freezeTimer === 0 && (this.pendingFlee || this.threat > 0.5)) {
-                this.fleeTimer = 35;
-                this.fleeDir = this.x < this.worldW / 2 ? 1 : -1; // bolt to the open side
-                this.pendingFlee = false;
+                this.pendingFlee = true;
             }
             return;
         }
         if (this.fleeTimer > 0 || this.threat > 0.5 || this.pendingFlee) {
             if (this.fleeTimer <= 0) {
                 this.fleeTimer = 30;
-                this.fleeDir = this.x < this.worldW / 2 ? 1 : -1;
+                // bolt for the burrow when we're down on the meadow floor; up on a
+                // ledge (no burrow up there) just panic toward the open side.
+                this.toBurrow = this.onFloor();
+                this.fleeDir = (
+                    this.toBurrow ? (this.burrowX >= this.x ? 1 : -1) : this.x < this.worldW / 2 ? 1 : -1
+                ) as 1 | -1;
                 this.pendingFlee = false;
             }
             this.fleeTimer--;
-            this.heading = this.fleeDir;
+            if (this.toBurrow) {
+                // make a beeline for the hole and keep going until we reach it
+                this.heading = (this.burrowX >= this.x ? 1 : -1) as 1 | -1;
+                if (Math.abs(this.x - this.burrowX) < 1.5) {
+                    if (this.onFloor()) {
+                        this.diveIntoBurrow();
+                        return;
+                    }
+                } else {
+                    this.fleeTimer = Math.max(this.fleeTimer, 3);
+                }
+            } else {
+                this.heading = this.fleeDir;
+            }
             if (this.obstacleAhead() && this.cooldown === 0) {
                 this.launch(-LEAP_V, this.heading * HOP_VX, "leap");
             } else if (this.cooldown === 0) {
@@ -598,6 +699,11 @@ export class Rabbit implements Creature {
             } else this.behavior = "alert";
             return;
         }
+        // a happy, well-fed rabbit will chase a passing butterfly for the fun of it
+        if (this.butterfly && this.wantsToPlay()) {
+            this.chase(this.butterfly);
+            return;
+        }
         this.ambient(arousal);
     }
 
@@ -606,7 +712,8 @@ export class Rabbit implements Creature {
      *  hunger and shrinks as the carrot fades. A full rabbit walks right past it. */
     private perceivesFood(food: FoodField): boolean {
         if (this.hunger < HUNGER_SEEK) return false;
-        const range = (SMELL_BASE + SMELL_HUNGER_GAIN * this.hunger) * (0.4 + 0.6 * food.intensity);
+        // a faded carrot still carries on the breeze (higher floor than before)
+        const range = (SMELL_BASE + SMELL_HUNGER_GAIN * this.hunger) * (0.6 + 0.4 * food.intensity);
         return Math.abs(food.x - this.x) <= range;
     }
 
@@ -907,6 +1014,7 @@ export class Rabbit implements Creature {
                     this.launch(-LEAP_V, this.heading * HOP_VX * 0.5, "binky");
                     this.energy = Math.max(0, this.energy - 0.04);
                     this.comfort = clamp01(this.comfort + 0.06);
+                    this.binkies++;
                 } else this.behavior = "sit";
                 this.actionTimer = 0;
                 break;
@@ -1006,6 +1114,122 @@ export class Rabbit implements Creature {
         this.gait++; // steady counter for animation cycling (dust, motion lines)
     }
 
+    // ── day/night, play & the burrow ─────────────────────────────────────────
+
+    /** Daylight 0..1 over the cycle: 0 at midnight, 1 at noon (smooth cosine). */
+    private daylight(ticks: number): number {
+        const phase = (ticks % DAY_TICKS) / DAY_TICKS;
+        return 0.5 - 0.5 * Math.cos(phase * 2 * Math.PI);
+    }
+
+    /** Standing on the meadow floor (not up on a ledge), where the burrow lives. */
+    private onFloor(): boolean {
+        return this.onGround && this.y >= this.floor - 0.6;
+    }
+
+    /** Content, fed and rested enough to muck about chasing a butterfly. */
+    private wantsToPlay(): boolean {
+        return this.threat < 0.2 && this.hunger < HUNGER_SEEK && this.energy > 0.4 && this.comfort > 0.45;
+    }
+
+    /** Chase the butterfly. The thrill of it drives the *real* forward command,
+     *  which loops back into arousal — so play genuinely livens the brain up. It
+     *  springs up to swat at the butterfly but always just misses (it darts off). */
+    private chase(b: { x: number; y: number }): void {
+        const dx = b.x - this.x;
+        const adx = Math.abs(dx);
+        if (this.turnLock === 0 && adx > 1) this.heading = (dx >= 0 ? 1 : -1) as 1 | -1;
+        this.engine.inject(command.forward, 5); // excitement → forward command
+        this.comfort = clamp01(this.comfort + 0.0015);
+        if (this.cooldown > 0) {
+            this.vx *= GROUND_FRICTION;
+            this.behavior = this.bounding ?? "chase";
+            return;
+        }
+        if (adx < 3.5 && b.y < this.y - 1.5) {
+            this.binky = Math.random() < 0.35; // a gleeful little catch-leap
+            this.launch(-LEAP_V, this.heading * HOP_VX * 0.6, this.binky ? "binky" : "chase");
+        } else {
+            this.gaitHop(BOUND_UP * 0.95, BOUND_VX, "chase", E_RUN);
+        }
+    }
+
+    /** Dive down the hole and hide. */
+    private diveIntoBurrow(): void {
+        this.x = this.burrowX;
+        this.vx = this.vy = 0;
+        this.onGround = true;
+        this.surface = null;
+        this.underground = true;
+        this.toBurrow = false;
+        this.fleeTimer = 0;
+        this.hideTimer = HIDE_MIN + Math.floor(Math.random() * (HIDE_MAX - HIDE_MIN + 1));
+        this.behavior = "hide";
+        this.flash(chalk.rgb(150, 120, 90)("↧ into the burrow"), 50);
+    }
+
+    /** Tick while hidden underground: frozen and out of sight, drives settling,
+     *  until it dares to pop back out once the scare has passed. */
+    private updateHidden(viewW: number): void {
+        this.behavior = "hide";
+        this.vx = this.vy = 0;
+        this.speed += (0 - this.speed) * 0.2;
+        if (this.perceptTimer > 0) this.perceptTimer--;
+        if (this.hideTimer > 0) this.hideTimer--;
+        this.threat *= 0.9;
+        this.alertness *= 0.9;
+        this.hunger = clamp01(this.hunger + HUNGER_RISE);
+        this.rest(E_REST); // it's safe down there — catch its breath
+        if (this.hideTimer <= 0 && this.threat < 0.2 && this.alertness < 0.3) {
+            this.underground = false;
+            this.pendingFlee = false;
+            this.comfort = clamp01(this.comfort + 0.12);
+            this.flash(chalk.rgb(150, 200, 120)("…all clear"), 45);
+        }
+        // keep the camera over the burrow while we wait
+        const margin = Math.max(6, Math.floor(viewW * 0.34));
+        const sx = this.x - this.camX;
+        if (sx < margin) this.camX = this.x - margin;
+        else if (sx > viewW - margin) this.camX = this.x - (viewW - margin);
+        this.camX = Math.max(0, Math.min(Math.max(0, this.worldW - viewW), this.camX));
+    }
+
+    /** Drift the butterfly about (and decide when one comes or goes). It veers
+     *  away from the rabbit so the chase never ends in a catch. */
+    private updateButterfly(clock: number): void {
+        if (this.butterfly) {
+            const b = this.butterfly;
+            b.vx = Math.max(-0.55, Math.min(0.55, b.vx * 0.9 + (Math.random() - 0.5) * 0.16));
+            const dx = b.x - this.x;
+            if (Math.abs(dx) < 6) b.vx += Math.sign(dx || 1) * 0.22; // shy away from the rabbit
+            b.x += b.vx;
+            b.y += Math.sin(clock * 0.3 + b.x * 0.2) * 0.35; // fluttery bob
+            b.y = Math.max(2, Math.min(this.floor - 2, b.y));
+            if (b.x < 3) b.vx += 0.25;
+            if (b.x > this.worldW - 3) b.vx -= 0.25;
+            if (--this.flyTtl <= 0) {
+                this.butterfly = null;
+                this.flyGap = FLY_GAP_MIN + Math.floor(Math.random() * (FLY_GAP_MAX - FLY_GAP_MIN));
+            }
+            return;
+        }
+        if (this.flyGap > 0) {
+            this.flyGap--;
+            return;
+        }
+        // one appears on a calm, sunny stretch — near the rabbit, up in the air
+        if (this.daylight(clock) > 0.55 && this.comfort > 0.4 && this.threat < 0.2 && Math.random() < 0.012) {
+            const side = Math.random() < 0.5 ? -1 : 1;
+            this.butterfly = {
+                x: this.x + side * (8 + Math.random() * 10),
+                y: this.floor - 4 - Math.random() * 3,
+                vx: 0,
+                vy: 0,
+            };
+            this.flyTtl = FLY_LIFE_MIN + Math.floor(Math.random() * (FLY_LIFE_MAX - FLY_LIFE_MIN));
+        }
+    }
+
     // ── panel HUD ────────────────────────────────────────────────────────────
     vitals(): Vital[] {
         return [
@@ -1047,6 +1271,26 @@ export class Rabbit implements Creature {
         return { mood, seeing };
     }
 
+    nickname(): string {
+        return this.name;
+    }
+
+    /** Pre-styled "a life so far" lines for the panel: carrots, binkies, hops and
+     *  a little joy-streak bar. */
+    lifeStats(): string[] {
+        const f = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+        const W = 12;
+        const fill = Math.round(Math.min(1, this.bestStreak / 360) * W);
+        const streak = "█".repeat(fill) + "·".repeat(W - fill);
+        return [
+            chalk.rgb(255, 160, 40)(`❀ ${this.carrots} carrots`) +
+                "   " +
+                chalk.magentaBright(`⤴ ${this.binkies} binkies`),
+            chalk.gray(`· ${f(this.hops)} hops travelled`),
+            chalk.gray("joy ") + chalk.rgb(255, 150, 190)(streak),
+        ];
+    }
+
     stimulusKeys(): StimulusKey[] {
         return [
             { key: "f", label: "food" },
@@ -1059,31 +1303,42 @@ export class Rabbit implements Creature {
     }
 
     // ── drawing (maps world → screen via camX) ───────────────────────────────
-    drawWorld(grid: string[][], innerW: number, innerH: number, food: FoodField | null): void {
+    drawWorld(grid: string[][], innerW: number, innerH: number, food: FoodField | null, ticks: number): void {
         const groundRow = innerH - 1;
         const cam = Math.round(this.camX);
+        const day = this.daylight(ticks);
+        // tint the meadow by time of day: bright at noon, dim and blue by night
+        const dim = (r: number, g: number, b: number) => {
+            const m = 0.4 + 0.6 * day;
+            return chalk.rgb(Math.round(r * m), Math.round(g * m), Math.round(b * m));
+        };
         const scr = (sx: number, y: number, s: string) => {
             if (sx >= 0 && sx < innerW && y >= 0 && y < innerH) grid[y][sx] = s;
         };
         const world = (wx: number, y: number, s: string) => scr(Math.round(wx) - cam, y, s);
 
-        // sky clouds + grass blades scroll with the world (parallax)
+        // sky: day/night tint, sun or moon, stars, fireflies, drifting birds
+        this.drawSky(scr, world, innerW, innerH, cam, ticks, day);
+
+        // grass groundline + blades (parallax with the world, darkened at night)
         for (let sx = 0; sx < innerW; sx++) {
             const wx = sx + cam;
-            if ((wx * 7) % 23 === 0) scr(sx, 1, chalk.rgb(150, 170, 200).dim("˘"));
-            scr(sx, groundRow, chalk.rgb(90, 140, 60)("▄"));
-            if ((wx * 13 + 5) % 9 === 0) scr(sx, groundRow - 1, chalk.rgb(110, 165, 75)("ʼ"));
+            scr(sx, groundRow, dim(90, 140, 60)("▄"));
+            if ((wx * 13 + 5) % 9 === 0) scr(sx, groundRow - 1, dim(110, 165, 75)("ʼ"));
         }
 
         // terrain
         for (const o of this.obstacles) {
             if (o.x1 - cam < 0 || o.x0 - cam >= innerW) continue;
             for (let x = o.x0; x <= o.x1; x++) {
-                world(x, o.top, chalk.rgb(110, 165, 75)("▀"));
-                if (o.solid) for (let y = o.top + 1; y < groundRow; y++) world(x, y, chalk.rgb(120, 95, 70)("▓"));
-                else world(x, o.top + 1, chalk.rgb(120, 95, 70).dim("▔"));
+                world(x, o.top, dim(110, 165, 75)("▀"));
+                if (o.solid) for (let y = o.top + 1; y < groundRow; y++) world(x, y, dim(120, 95, 70)("▓"));
+                else world(x, o.top + 1, dim(120, 95, 70).dim("▔"));
             }
         }
+
+        // the burrow on the meadow floor
+        this.drawBurrow(world, groundRow);
 
         // carrot (only if on-screen)
         if (food) {
@@ -1094,7 +1349,101 @@ export class Rabbit implements Creature {
             world(fx, fy - 1, chalk.rgb(255, 140, 0).bold("¥"));
         }
 
-        this.drawRabbit(world, groundRow);
+        // butterfly (under the rabbit, so a catch-leap overlaps it)
+        if (this.butterfly) this.drawButterfly(world);
+
+        // the rabbit itself — unless it's tucked away down the burrow
+        if (!this.underground) this.drawRabbit(world, groundRow);
+    }
+
+    /** The backdrop: a day→night sky with a sun/moon arc, twinkling stars,
+     *  fireflies at night, drifting clouds and the odd bird by day. Decorative. */
+    private drawSky(
+        scr: (sx: number, y: number, s: string) => void,
+        world: (wx: number, y: number, s: string) => void,
+        innerW: number,
+        innerH: number,
+        cam: number,
+        ticks: number,
+        day: number,
+    ): void {
+        const phase = (ticks % DAY_TICKS) / DAY_TICKS;
+        const skyTop = Math.max(2, Math.floor(innerH * 0.45));
+
+        // stars come out as the light fades (sparse, deterministic, twinkling)
+        if (day < 0.6) {
+            const bright = day < 0.25;
+            for (let sx = 0; sx < innerW; sx++) {
+                const hash = ((sx + cam) * 2654435761) >>> 0;
+                if (hash % 16 !== 0) continue;
+                const row = 1 + ((hash >> 5) % Math.max(1, skyTop - 1));
+                const twinkle = (((ticks >> 3) + (hash & 7)) % 9) === 0;
+                const c = bright ? chalk.rgb(210, 215, 245) : chalk.rgb(150, 155, 185).dim;
+                scr(sx, row, c(twinkle ? "✦" : "·"));
+            }
+        }
+
+        // clouds drift slowly on the wind, tinted by the light
+        const m = 0.4 + 0.6 * day;
+        const cloud = chalk.rgb(Math.round(120 * m + 40), Math.round(135 * m + 40), Math.round(170 * m + 45)).dim;
+        const drift = Math.floor(ticks * 0.05);
+        for (let sx = 0; sx < innerW; sx++) {
+            if (((((sx + cam - drift) % 23) + 23) % 23) === 0) scr(sx, 1, cloud("˘"));
+        }
+
+        // the sun arcs across by day, the moon by night
+        const arc = (t: number) =>
+            1 + Math.round((1 - Math.sin(Math.max(0, Math.min(1, t)) * Math.PI)) * Math.min(3, skyTop - 1));
+        if (phase >= 0.2 && phase <= 0.8) {
+            const t = (phase - 0.2) / 0.6;
+            scr(Math.round(t * (innerW - 1)), arc(t), chalk.rgb(255, 214, 92)("☀"));
+        } else {
+            const nt = phase > 0.8 ? (phase - 0.8) / 0.4 : (phase + 0.2) / 0.4;
+            scr(Math.round(nt * (innerW - 1)), arc(nt), chalk.rgb(232, 232, 210)("☽"));
+        }
+
+        // fireflies blinking just above the grass at night
+        if (day < 0.3) {
+            const glow = chalk.rgb(220, 240, 130);
+            for (let k = 0; k < 4; k++) {
+                const fx = cam + ((k + 0.5) * innerW) / 4 + Math.sin(ticks * 0.05 + k * 1.7) * 5;
+                const fy = innerH - 4 - (((Math.sin(ticks * 0.08 + k * 2.1) * 2 + 2) | 0));
+                if ((((ticks >> 3) + k) % 4) !== 0) world(fx, fy, glow("·"));
+            }
+        }
+
+        // a couple of birds gliding over on bright afternoons
+        if (day > 0.62) {
+            for (let k = 0; k < 2; k++) {
+                const span = innerW + 10;
+                const bx = ((((Math.floor(ticks * 0.22 + (k * span) / 2) % span) + span) % span) - 5);
+                const flap = ((Math.floor(ticks / 4) + k) % 2) === 0;
+                scr(bx, 2 + k, chalk.gray(flap ? "˄" : "˅"));
+            }
+        }
+    }
+
+    /** The butterfly: a fluttering pink pair of wings round a little body. */
+    private drawButterfly(world: (wx: number, y: number, s: string) => void): void {
+        const b = this.butterfly;
+        if (!b) return;
+        const by = Math.round(b.y);
+        const flap = (Math.floor(this.gait / 2) % 2) === 0;
+        const wing = chalk.rgb(255, 170, 215);
+        world(b.x - 1, by, wing(flap ? "❰" : "❮"));
+        world(b.x, by, chalk.rgb(120, 90, 150)("•"));
+        world(b.x + 1, by, wing(flap ? "❱" : "❯"));
+    }
+
+    /** The burrow mouth on the meadow floor; eyes peek out just before it emerges. */
+    private drawBurrow(world: (wx: number, y: number, s: string) => void, groundRow: number): void {
+        const bx = this.burrowX;
+        const soil = chalk.rgb(96, 72, 52);
+        world(bx - 1, groundRow - 1, soil("▟"));
+        world(bx + 1, groundRow - 1, soil("▙"));
+        const peeking = this.underground && this.hideTimer < 10;
+        world(bx, groundRow - 1, peeking ? chalk.white("•") : chalk.rgb(28, 22, 18)("●"));
+        world(bx, groundRow, chalk.rgb(60, 46, 36)("▄"));
     }
 
     private drawRabbit(world: (wx: number, y: number, s: string) => void, groundRow: number): void {

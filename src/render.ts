@@ -69,15 +69,18 @@ const BEHAVIOR_COLOR: Record<string, (s: string) => string> = {
     hop: chalk.greenBright,
     leap: chalk.magentaBright,
     binky: chalk.magentaBright,
+    chase: chalk.magentaBright,
     flee: chalk.redBright,
     forage: chalk.green,
     // rabbit — stationary / reactive
     eat: chalk.greenBright,
     sit: chalk.gray,
     sniff: chalk.cyan,
+    periscope: chalk.cyan,
     groom: chalk.rgb(255, 150, 190),
     flop: chalk.gray,
     rest: chalk.gray,
+    hide: chalk.rgb(120, 95, 70),
     alert: chalk.cyanBright,
     freeze: chalk.redBright,
     thump: chalk.yellowBright,
@@ -155,6 +158,15 @@ function renderPanel(scene: Scene, width: number, height: number): string[] {
         lines.push(climb);
         lines.push("");
     }
+
+    // "a life so far" — carrots eaten, binkies, hops, joy streak (rabbit only)
+    const stats = creature.lifeStats?.();
+    if (stats) {
+        lines.push(chalk.bold("a life so far"));
+        for (const s of stats) lines.push(s);
+        lines.push("");
+    }
+
     lines.push(chalk.gray("stimulus"));
     lines.push(chalk.white("→ " + scene.stimulus));
 

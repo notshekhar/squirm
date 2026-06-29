@@ -10,13 +10,13 @@ const VERSION = typeof __SQUIRM_VERSION__ === "string" ? __SQUIRM_VERSION__ : "0
 const HELP = `squirm — a virtual creature living in your terminal
 
 A real-time simulation driven by the genuine C. elegans connectome (White et al.
-1986, via NemaNode). Run it as the worm itself, or as a rabbit that wears the
-same brain and hops around a meadow with real gravity.
+1986, via NemaNode). Runs as a rabbit that wears the worm's brain and hops around
+a meadow with real gravity — or as the worm itself in a petri dish.
 
 Usage:
-  squirm               Launch the worm (petri dish, crawling)
-  squirm rabbit        Launch the rabbit (meadow, real jump physics)
-  squirm worm          Launch the worm explicitly
+  squirm               Launch the rabbit (meadow, real jump physics)
+  squirm worm          Launch the worm (petri dish, crawling)
+  squirm rabbit        Launch the rabbit explicitly
   squirm info          Print connectome stats and exit
   squirm update        Update to the latest release (alias: upgrade)
   squirm version       Print the version
@@ -25,9 +25,12 @@ Usage:
   (--rabbit / --worm also work as flags.)
 
 In the habitat:
-  f    drop food         (worm: chemotaxes & dwells · rabbit: hops to the carrot)
-  t    nose touch        (nociception → reversal)
-  p    tail poke         (escape → reversal)
+  f    drop food         (rabbit: hops to the carrot · worm: chemotaxes & dwells)
+  t    nose touch        (nociception → startle / reversal)
+  p    tail poke         (escape → startle / reversal)
+  d    predator!         (rabbit: freeze, then flee)
+  s    a rustle          (rabbit: ears up, alert)
+  c    pet / calm         (rabbit: soothes into a groom)
   space  pause/resume    r  reset      q / ctrl+c  quit`;
 
 function info(): void {
@@ -62,8 +65,9 @@ async function main(): Promise<void> {
         return;
     }
 
+    // The rabbit is the default; the worm is opt-in (positional or --worm flag).
     const kind: CreatureKind =
-        args.some((a) => a === "rabbit" || a === "--rabbit") ? "rabbit" : "worm";
+        args.some((a) => a === "worm" || a === "--worm") ? "worm" : "rabbit";
     run(kind);
 }
 

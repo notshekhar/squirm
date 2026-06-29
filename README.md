@@ -13,11 +13,16 @@ motor pools that crawl the body — you watch the reflex happen in real time.
 > nervous system has been mapped end to end, so it's the obvious worm to keep as
 > a pet in your terminal — and wired to its real connectome, it genuinely squirms.
 
-It also ships with a **rabbit** 🐇 — the exact same connectome brain, wearing a
-different body. The rabbit lives in a side-view meadow with real gravity and
-jumps in genuine parabolic arcs; a surge of forward-command activity fires its
-legs into a hop, a big surge into a leap. (A rabbit has no mapped connectome —
-this is the worm's brain in a rabbit suit, and that's the joke.)
+By default it runs as a **rabbit** 🐇 — the exact same connectome brain, wearing a
+different body (run `squirm worm` for the worm in its dish). The rabbit lives in a
+side-view meadow with real gravity and jumps in genuine parabolic arcs; a surge of
+forward-command activity fires its legs into a hop, a big surge into a leap. (A
+rabbit has no mapped connectome — this is the worm's brain in a rabbit suit, and
+that's the joke.) It has a **name**, lives under a slow **day→night sky** (sun,
+moon, stars, fireflies, drifting clouds and birds), **chases a butterfly** for the
+fun of it when it's content — the thrill drives its real forward command — and
+**bolts down a burrow** to hide when something scares it. The panel keeps **a life
+so far**: carrots eaten, binkies, hops, and its longest streak of contentment.
 
 ```
 ╭ petri dish ───────────────────────────────╮ ╭ nervous system ────────────────╮
@@ -54,7 +59,7 @@ irm https://raw.githubusercontent.com/notshekhar/squirm/main/install.ps1 | iex
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/notshekhar/squirm/main/install.ps1 | iex"
 ```
 
-Then `squirm` (worm) or `squirm rabbit`. Update in place any time with
+Then `squirm` (rabbit 🐇) or `squirm worm`. Update in place any time with
 `squirm update` (it re-runs the right installer for your platform). Uninstall
 with `SQUIRM_UNINSTALL=1 curl -fsSL .../install.sh | bash` (macOS/Linux), or on
 Windows `$env:SQUIRM_UNINSTALL=1; irm .../install.ps1 | iex` (PowerShell) /
@@ -64,8 +69,8 @@ Windows `$env:SQUIRM_UNINSTALL=1; irm .../install.ps1 | iex` (PowerShell) /
 
 ```sh
 bun install
-bun start                 # launch the worm (petri dish)
-bun src/cli.ts rabbit     # launch the rabbit (meadow, jump physics)
+bun start                 # launch the rabbit (meadow, jump physics)
+bun src/cli.ts worm       # launch the worm (petri dish)
 bun src/cli.ts info       # print connectome stats
 ```
 
@@ -91,11 +96,15 @@ shows `↗ climbing gradient`), then slow into "dwelling" once it arrives.
 | --- | --- |
 | `f` | drop a carrot (on the ground *or* a ledge, in view) — it navigates over and eats it |
 | `t` / `p` | nose touch / tail poke → startle |
-| `d` | predator! → **freeze, then flee** |
+| `d` | predator! → **freeze, then bolt for the burrow** (or flee in the open) |
 | `s` | a rustle → **alert** (ears up, scanning) |
 | `c` | pet / calm → soothes it into a **groom** |
 
-`space` pause · `r` reset (also reshuffles the meadow) · `q` quit.
+`space` pause · `r` reset (reshuffles the meadow **and gives it a new name**) · `q` quit.
+
+Left to its own devices a content rabbit will **chase a butterfly** that drifts in
+on sunny afternoons (it always just misses), and the whole meadow runs on a slow
+**day→night cycle** — sun and moon arcing over, stars and fireflies after dark.
 
 The rabbit lives in a **side-scrolling world wider than the screen** (the camera
 follows it) and behaves like a real rabbit: it is **mostly still** — loafing,
@@ -105,8 +114,9 @@ grooming, sitting up to *periscope* and scan — and when it does travel it goes
 climbing the terrain by an actual reachability graph. It has **drives** (energy,
 hunger, comfort, alertness, threat) that produce an emergent ethogram — *walk,
 run, hop, leap, binky, zoomies, forage, eat, sniff, groom, periscope, flop, sit,
-alert, freeze, flee, thump* — all shown live in the panel HUD along with its
-**mood** and what it's **seeing**, and the choice of action is biased by the
+alert, freeze, flee, thump, chase, hide* — all shown live in the panel HUD along
+with its **mood**, what it's **seeing**, and **a life so far** (carrots eaten,
+binkies, hops, longest contentment streak); the choice of action is biased by the
 forward-command **arousal** read straight out of the connectome.
 
 ## How it works
@@ -156,7 +166,11 @@ same brain; only the habitat and physics differ.
   B-motor surge → a hop, a bigger surge → a leap, an obstacle ahead → a clearing
   leap, and a touch-driven reversal surge → a **startle** panic-leap. Drop a
   carrot and it hops over, then **eats** it (the patch shrinks and disappears)
-  before going back to roaming.
+  before going back to roaming. On top of that it has a **life**: a name, a
+  **day→night sky** it lives under, a **butterfly** it chases when it's content
+  (the chase injects the real forward command, so play genuinely revs the brain),
+  and a **burrow** it dives into to hide when threatened — plus a running tally of
+  carrots, binkies, hops and contentment shown on the panel.
 
 It is **not** biophysically accurate — no real spikes, ion channels, or timing —
 but it is wired from the genuine connectome, so the behaviour you see emerges

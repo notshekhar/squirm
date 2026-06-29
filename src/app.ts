@@ -73,8 +73,8 @@ export class SquirmApp implements Component {
     private timer?: ReturnType<typeof setInterval>;
     private nextCarrotAt = Infinity; // when the next wild carrot appears (rabbit only)
 
-    constructor(kind: CreatureKind = "worm") {
-        this.creature = kind === "rabbit" ? new Rabbit(this.engine) : new Worm(this.engine);
+    constructor(kind: CreatureKind = "rabbit") {
+        this.creature = kind === "worm" ? new Worm(this.engine) : new Rabbit(this.engine);
         this.legend = new Markdown(legendFor(this.creature), 0, 0, mdTheme);
     }
 
@@ -248,9 +248,10 @@ export class SquirmApp implements Component {
 
     render(width: number): string[] {
         const rows = this.tui.terminal.rows;
+        const name = this.creature.nickname?.();
         const who =
             this.creature.kind === "rabbit"
-                ? "a rabbit hopping on the C. elegans connectome"
+                ? `${name ? name + " — " : ""}a rabbit on the C. elegans connectome`
                 : "a virtual C. elegans, wired from its real connectome";
         const title =
             chalk.bold.greenBright("  squirm") +
@@ -292,6 +293,6 @@ export class SquirmApp implements Component {
     }
 }
 
-export function run(kind: CreatureKind = "worm"): void {
+export function run(kind: CreatureKind = "rabbit"): void {
     new SquirmApp(kind).start();
 }
